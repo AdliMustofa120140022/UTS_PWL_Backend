@@ -1,42 +1,37 @@
-# Import modul-modul yang diperlukan dari Pyramid
+# Definisi rute dan views untuk Pyramid yang mengakses layanan gRPC
 from pyramid.response import Response
 from pyramid.view import view_config
+from pyramid.view import view_defaults
+import grpc
+from product_pb2 import Product, GetProductsRequest, GetProductsResponse, AddProductRequest, AddProductResponse, DeleteProductRequest, DeleteProductResponse
+from product_pb2_grpc import ProductServiceStub
 
-# Import model produk dari file models.py
-from .models import Product
+@view_config(route_name='grpc_get_products', renderer='json')
+def grpc_get_products(request):      # View untuk mendapatkan produk melalui layanan gRPC
+    with grpc.insecure_channel('localhost:50051') as channel:
+        stub = ProductServiceStub(channel)
+        response = stub.GetProducts(GetProductsRequest())
+        products = [{'id': p.id, 'name': p.name, 'price': p.price, 'stock': p.stock} for p in response.products]
+        return {'products': products}
 
-# Definisikan view untuk halaman utama
-@view_config(route_name='home', renderer='json')
-def home(request):
-    # Query semua produk dari database
-    products = request.dbsession.query(Product).all()
-    # Kembalikan produk dalam format JSON
-    return {'products': products}
-
-# Definisikan view untuk menambahkan produk
-@view_config(route_name='add_product', request_method='POST', renderer='json')
-def add_product(request):
-    # Ambil data JSON dari permintaan
+@view_config(route_name='grpc_add_product', request_method='POST', renderer='json')
+def grpc_add_product(request):       # View untuk menambahkan produk melalui layanan gRPC
     data = request.json_body
-    # Lakukan validasi data di sini
-    # Buat objek Produk baru dan tambahkan ke database
-    new_product = Product(**data)
-    request.dbsession.add(new_product)
-    # Kembalikan respons JSON
-    return {'status': 'success', 'message': 'Product added successfully'}
+    add_request = AddProductRequest(name=data['name'], price=data['price'], stock=data['stock'])
+    
+    with grpc.insecure_channel('localhost:50051') as channel:
+        stub = ProductServiceStub(channel)
+        response = stub.AddProduct(add_request)
+    
+    return {'status': 'success', 'message': response.message}
 
-# Definisikan view untuk menghapus produk
-@view_config(route_name='delete_product', request_method='DELETE', renderer='json')
-def delete_product(request):
-    # Ambil id produk dari path parameter
+@view_config(route_name='grpc_delete_product', request_method='DELETE', renderer='json')
+def grpc_delete_product(request):   # View untuk menghapus produk melalui layanan gRPC
     product_id = int(request.matchdict['id'])
-    # Query produk berdasarkan id
-    product = request.dbsession.query(Product).get(product_id)
-    # Hapus produk jika ditemukan
-    if product:
-        request.dbsession.delete(product)
-        return {'status': 'success', 'message': 'Product deleted successfully'}
-    else:
-        return {'status': 'error', 'message': 'Product not found'}
-
-# Buat view dan route untuk update dan pembelian produk
+    delete_request = DeleteProductRequest(id=product_id)
+    
+    with grpc.insecure_channel('localhost:50051') as channel:
+        stub = ProductServiceStub(channel)
+        response = stub.DeleteProduct(delete_request)
+    
+    return {'status': 'success', 'message': response.message}
